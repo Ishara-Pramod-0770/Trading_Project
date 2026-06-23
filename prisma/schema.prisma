@@ -1,0 +1,198 @@
+// CryptoPulse AI — data model
+// Provider: PostgreSQL. Set DATABASE_URL in .env, then run:
+//   npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// A user is provisioned from Clerk (clerkId) on first authenticated request.
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String?  @unique
+  name      String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  watchlist  Watchlist[]
+  trades     Trade[]
+  holdings   Portfolio[]
+  alerts     Alert[]
+  progress   LessonProgress[]
+}
+
+// Reference table of tradable coins (seeded from constants).
+model Coin {
+  id        String   @id @default(cuid())
+  symbol    String   @unique // e.g. BTCUSDT
+  base      String // BTC
+  name      String // Bitcoin
+  color     String?
+  createdAt DateTime @default(now())
+
+  watchedBy Watchlist[]
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  coinId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coin Coin @relation(fields: [coinId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, coinId])
+  @@index([userId])
+}
+
+model Trade {
+  id            String    @id @default(cuid())
+  userId        String
+  symbol        String
+  side          TradeSide @default(LONG)
+  entryPrice    Float
+  exitPrice     Float?
+  quantity      Float     @default(1)
+  pnl           Float? // realized P/L in quote currency
+  pnlPercent    Float?
+  strategy      String?
+  notes         String?
+  screenshotUrl String?
+  openedAt      DateTime  @default(now())
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum TradeSide {
+  LONG
+  SHORT
+}
+
+model Portfolio {
+  id          String   @id @default(cuid())
+  userId      String
+  symbol      String
+  amount      Float // units held
+  avgBuyPrice Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+  @@index([userId])
+}
+
+model Alert {
+  id          String      @id @default(cuid())
+  userId      String
+  symbol      String
+  condition   AlertCond
+  targetPrice Float
+  channel     AlertChannel @default(BROWSER)
+  triggered   Boolean      @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum AlertCond {
+  ABOVE
+  BELOW
+}
+
+enum AlertChannel {
+  BROWSER
+  EMAIL
+}
+
+// ---- Learning content ----
+
+model Course {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  title       String
+  description String
+  level       Level
+  order       Int     @default(0)
+
+  lessons Lesson[]
+}
+
+enum Level {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model Lesson {
+  id        String  @id @default(cuid())
+  courseId  String
+  slug      String  @unique
+  title     String
+  content   String  @db.Text
+  order     Int     @default(0)
+
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress LessonProgress[]
+}
+
+model LessonProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  lessonId    String
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+}
+
+model Pattern {
+  id           String      @id @default(cuid())
+  slug         String      @unique
+  name         String
+  category     PatternCat
+  description  String      @db.Text
+  formation    String      @db.Text
+  entryIdea    String
+  stopLoss     String
+  target       String
+  mistakes     String      @db.Text
+}
+
+enum PatternCat {
+  REVERSAL
+  CONTINUATION
+  TRIANGLE
+  HARMONIC
+}
+
+model Indicator {
+  id             String @id @default(cuid())
+  slug           String @unique
+  name           String
+  whatItDoes     String @db.Text
+  howTradersUse  String @db.Text
+  settings       String
+  interpretation String @db.Text
+  example        String @db.Text
+}
